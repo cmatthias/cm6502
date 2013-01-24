@@ -11,10 +11,8 @@ CSV.foreach('data/opcodes.csv', :headers => true) do |row|
   addr_modes[row[2]] = true
 end
 
-File.open('interfaces.d','w') do |dfile|
+File.open('interfaces_autogen.d','w') do |dfile|
   dfile.puts <<Q
-module interfaces;
-
 interface I6502
 {
   enum AddrMode

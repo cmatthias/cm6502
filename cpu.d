@@ -1,23 +1,95 @@
 module cpu;
 
 import interfaces;
+import std.stdio;
+import core.time;
+
+class SimpleMMU : MMU
+{
+  ubyte[] mem;
+
+  this(ushort mem_size)
+  {
+    mem.length = mem_size;
+    mem[] = 0;
+  }
+
+  ubyte read(ushort addr)
+  {
+    return mem[addr];
+  }
+
+  void write(ushort addr, ubyte val)
+  {
+    mem[addr] = val;
+  }
+
+  void write(ushort addr, ubyte[] val)
+  {
+    foreach (ubyte b; val)
+    {
+      write(addr++, b);
+    }
+  }
+}
 
 class CPU : C6502
 {
-  short pc;
-  byte sp;
-  byte a;
-  byte x;
-  byte y;
-  byte sr;
+  ushort pc;
+  ubyte sp;
+  ubyte a;
+  ubyte x;
+  ubyte y;
+  ubyte sr;
 
-  this()
+  MMU mmu;
+
+  bool running;
+  ulong ticks;
+  long sys_ticks;
+
+  this(MMU m)
   {
     super();
+    mmu = m;
+    pc = 0;
+    sp = 0;
+    a = 0;
+    x = 0;
+    y = 0;
+    sr = 0;
+    running = false;
+    ticks = 0L;
+    sys_ticks = TickDuration.appOrigin.nsecs();
   }
 
-  void _brk(AddrMode mode, int data){}
-  void _ora(AddrMode mode, int data){}
+  void run()
+  {
+    running = true;
+    writefln("started at %d (%d ticks/sec)", sys_ticks, TickDuration.ticksPerSec);
+    while(running)
+    {
+      byte op = mmu.read(pc);
+      int data = 0;
+      int data_length = data_lengths[op];
+      for (int i = 0; i < data_length; i++)
+      {
+        data += (mmu.read(cast(short)(pc+i)) << 8*i);
+      }
+      ops[op](addr_modes[op], data);
+      pc += data_length;
+    }
+  }
+
+  void _brk(AddrMode mode, int data)
+  {
+    running = false;
+  }
+  void _ora(AddrMode mode, int data)
+  {
+    auto tick = TickDuration.currSystemTick.nsecs();
+    writefln("_ora was called with data 0x%08X at offset %d", data, tick - sys_ticks);
+  }
   void _asl(AddrMode mode, int data){}
   void _php(AddrMode mode, int data){}
   void _bpl(AddrMode mode, int data){}
@@ -74,4 +146,12 @@ class CPU : C6502
   void _sed(AddrMode mode, int data){}
 }
 
-void main(){}
+void main()
+{
+  SimpleMMU mmu = new SimpleMMU(4096);
+
+  mmu.write(0x00, [0x01, 0x02, 0x01, 0x04, 0x01, 0x06, 0x01, 0x08]);
+  CPU cpu = new CPU(mmu);
+
+  cpu.run();
+}
